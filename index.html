@@ -353,15 +353,16 @@
 </div>
 
 <footer id="footer" style="display:none">
-  Vragen? <a href="mailto:hassan@youremail.com" style="color:var(--text2);text-decoration:none;border-bottom:0.5px solid var(--border2)">hassan@youremail.com</a>
+  Vragen? Gebruik het contactformulier via de knop op deze pagina.
 </footer>
 
 <!-- Offer modal -->
 <div class="modal-overlay" id="modal">
   <div class="modal">
     <div id="modal-form-wrap">
-      <h2>Doe een bod</h2>
-      <p class="modal-sub">Vul je gegevens in. Je ontvangt binnen 24 uur een reactie.</p>
+      <h2 id="modal-title">Doe een bod</h2>
+      <p class="modal-sub" id="modal-sub">Vul je gegevens in. Je ontvangt binnen 24 uur een reactie.</p>
+      <input type="hidden" id="f-type" value="offer" />
       <div class="field">
         <label>Jouw naam</label>
         <input type="text" id="f-name" placeholder="Jan Janssen" />
@@ -370,7 +371,7 @@
         <label>E-mailadres</label>
         <input type="email" id="f-email" placeholder="jan@bedrijf.com" />
       </div>
-      <div class="field">
+      <div class="field" id="f-bid-wrap">
         <label>Bod (€)</label>
         <input type="number" id="f-bid" placeholder="500" min="1" />
       </div>
@@ -380,7 +381,7 @@
       </div>
       <div class="modal-btns">
         <a class="btn btn-secondary" onclick="closeModal()">Annuleren</a>
-        <a class="btn btn-primary" onclick="submitOffer()">Bod versturen</a>
+        <a class="btn btn-primary" id="submit-btn" onclick="submitOffer()">Bod versturen</a>
       </div>
     </div>
     <div class="success" id="modal-success">
@@ -396,7 +397,7 @@
 </div>
 
 <script>
-const CONTACT_EMAIL = 'hassan@youremail.com'; // ← AANPASSEN
+const FORMSPREE_URL = 'https://formspree.io/f/mgorkqbo';
 
 const domains = {
   'sell2rent.be': {
@@ -500,9 +501,24 @@ function detectDomain() {
   return override || host;
 }
 
-function openModal() {
+function openModal(mode) {
+  mode = mode || 'offer';
+  document.getElementById('f-type').value = mode;
+  if (mode === 'buy') {
+    document.getElementById('modal-title').textContent = 'Interesse in aankoop';
+    document.getElementById('modal-sub').textContent = 'Vul je gegevens in en we nemen binnen 24 uur contact op.';
+    document.getElementById('f-bid-wrap').style.display = 'none';
+    document.getElementById('submit-btn').textContent = 'Verstuur aanvraag';
+  } else {
+    document.getElementById('modal-title').textContent = 'Doe een bod';
+    document.getElementById('modal-sub').textContent = 'Vul je gegevens in. Je ontvangt binnen 24 uur een reactie.';
+    document.getElementById('f-bid-wrap').style.display = '';
+    document.getElementById('submit-btn').textContent = 'Bod versturen';
+  }
   document.getElementById('modal').classList.add('open');
 }
+
+function openBuyModal() { openModal('buy'); }
 
 function closeModal() {
   document.getElementById('modal').classList.remove('open');
@@ -510,27 +526,55 @@ function closeModal() {
   document.getElementById('modal-success').style.display = 'none';
 }
 
-function submitOffer() {
+async function submitOffer() {
   const name  = document.getElementById('f-name').value.trim();
   const email = document.getElementById('f-email').value.trim();
   const bid   = document.getElementById('f-bid').value.trim();
   const note  = document.getElementById('f-note').value.trim();
+  const type  = document.getElementById('f-type').value;
   const domain = detectDomain();
+  const isBuy = type === 'buy';
 
-  if (!name || !email || !bid) {
-    alert('Vul naam, e-mailadres en bod in.');
+  if (!name || !email || (!isBuy && !bid)) {
+    alert('Vul naam en e-mailadres in' + (isBuy ? '.' : ', en je bod.'));
     return;
   }
 
-  const subject = encodeURIComponent(`Bod op ${domain}: €${bid}`);
-  const body = encodeURIComponent(
-    `Domein: ${domain}\nNaam: ${name}\nE-mail: ${email}\nBod: €${bid}\n\nToelichting:\n${note || '—'}`
-  );
+  const submitBtn = document.getElementById('submit-btn');
+  submitBtn.textContent = 'Versturen…';
+  submitBtn.style.opacity = '0.6';
+  submitBtn.style.pointerEvents = 'none';
 
-  window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
+  try {
+    const res = await fetch(FORMSPREE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({
+        type: isBuy ? 'Aankoop aan vraagprijs' : 'Bod',
+        domein: domain,
+        naam: name,
+        email: email,
+        bod: isBuy ? 'Vraagprijs' : `€${bid}`,
+        toelichting: note || '—',
+        _subject: isBuy ? `Koopinteresse: ${domain}` : `Bod op ${domain}: €${bid}`
+      })
+    });
 
-  document.getElementById('modal-form-wrap').style.display = 'none';
-  document.getElementById('modal-success').style.display = 'block';
+    if (res.ok) {
+      document.getElementById('modal-form-wrap').style.display = 'none';
+      document.getElementById('modal-success').style.display = 'block';
+    } else {
+      alert('Er ging iets mis. Probeer opnieuw.');
+      submitBtn.textContent = isBuy ? 'Verstuur aanvraag' : 'Bod versturen';
+      submitBtn.style.opacity = '';
+      submitBtn.style.pointerEvents = '';
+    }
+  } catch(e) {
+    alert('Geen verbinding. Probeer opnieuw.');
+    submitBtn.textContent = isBuy ? 'Verstuur aanvraag' : 'Bod versturen';
+    submitBtn.style.opacity = '';
+    submitBtn.style.pointerEvents = '';
+  }
 }
 
 // Close modal on overlay click
@@ -560,11 +604,10 @@ if (data) {
       </div>
       <div class="divider"></div>
       <div class="btn-group">
-        <a class="btn btn-primary"
-           href="mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(data.buySubject)}&body=${encodeURIComponent('Ik ben geïnteresseerd in de aankoop van ' + domain + ' tegen de vraagprijs van ' + data.price + '.\n\nMijn naam:\nMijn e-mail:\nMijn telefoonnummer:')}">
+        <button class="btn btn-primary" onclick="openBuyModal()">
           Koop nu voor ${data.price}
-        </a>
-        <button class="btn btn-secondary" onclick="openModal()">Doe een bod</button>
+        </button>
+        <button class="btn btn-secondary" onclick="openModal('offer')">Doe een bod</button>
       </div>
     </div>
 
